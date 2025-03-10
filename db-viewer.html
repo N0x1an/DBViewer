@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQLite Database Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border-radius: 5px;
+        }
+        
+        h1, h2, h3 {
+            margin-top: 0;
+        }
+        
+        .file-input-container {
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        
+        .status-message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .status-message.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .status-message.success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status-message.info {
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .layout {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        @media (min-width: 768px) {
+            .layout {
+                flex-direction: row;
+            }
+            
+            .sidebar {
+                flex: 0 0 250px;
+            }
+            
+            .main-content {
+                flex: 1;
+            }
+        }
+        
+        .sidebar {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+        
+        .table-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .table-list li {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+        
+        .table-list li:hover {
+            background-color: #f1f1f1;
+        }
+        
+        .table-list li.active {
+            background-color: #1976d2;
+            color: white;
+        }
+        
+        .panel {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .panel-header {
+            background-color: #f5f5f5;
+            padding: 10px 15px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .panel-body {
+            padding: 15px;
+            overflow: auto;
+            background-color: white; 
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            text-align: left;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+        }
+        
+        th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .button {
+            padding: 8px 16px;
+            background-color: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .button:hover {
+            background-color: #1565c0;
+        }
+        
+        .button.secondary {
+            background-color: #757575;
+        }
+        
+        .button.secondary:hover {
+            background-color: #616161;
+        }
+        
+        .button.success {
+            background-color: #2e7d32;
+        }
+        
+        .button.success:hover {
+            background-color: #1b5e20;
+        }
+        
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 5px;
+        }
+        
+        .schema-header {
+            font-weight: bold;
+            background-color: #e1e1e1;
+            padding: 8px;
+        }
+        
+        .schema-cell {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        #sizeChart {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #1976d2;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SQLite Database Viewer</h1>
+        
+        <div class="file-input-container">
+            <h2>Upload SQLite Database</h2>
+            <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3,.db3">
+            <p>Select a .db file to analyze its structure and content</p>
+            <div id="fileInfo"></div>
+        </div>
+        
+        <div id="statusMessage" class="status-message"></div>
+        
+        <div id="loading" class="loading-indicator" style="display: none;">
+            <div class="spinner"></div>
+            <span style="margin-left: 10px;">Loading database...</span>
+        </div>
+        
+        <div id="dbContent" style="display: none;">
+            <div class="layout">
+                <div class="sidebar">
+                    <h2>Tables</h2>
+                    <ul id="tableList" class="table-list"></ul>
+                </div>
+                
+                <div class="main-content">
+                    <div id="tableInfo">
+                        <div class="panel-header">
+                            <h2 id="currentTableName">Select a table</h2>
+                            <div>
+                                <button id="exportCsvBtn" class="button success" disabled>Export to CSV</button>
+                                <button id="simulateSizeBtn" class="button secondary">Simulate Size Change</button>
+                            </div>
+                        </div>
+                        
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3>Schema</h3>
+                            </div>
+                            <div class="panel-body">
+                                <div id="tableSchema"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3>Data (first 100 rows)</h3>
+                            </div>
+                            <div class="panel-body">
+                                <div id="tableData" style="overflow-x: auto;"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="panel" id="sizeHistoryPanel" style="display: none;">
+                            <div class="panel-header">
+                                <h3>Size History</h3>
+                            </div>
+                            <div class="panel-body">
+                                <div class="chart-container">
+                                    <canvas id="sizeChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- SQLite library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    
+    <!-- Chart.js for visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script>
+        // Initialize variables
+        let db = null;
+        let currentTable = null;
+        let sizeHistory = [];
+        let sizeChart = null;
+        
+        // DOM Elements
+        const dbFileInput = document.getElementById('dbFileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const statusMessage = document.getElementById('statusMessage');
+        const loading = document.getElementById('loading');
+        const dbContent = document.getElementById('dbContent');
+        const tableList = document.getElementById('tableList');
+        const currentTableName = document.getElementById('currentTableName');
+        const tableSchema = document.getElementById('tableSchema');
+        const tableData = document.getElementById('tableData');
+        const exportCsvBtn = document.getElementById('exportCsvBtn');
+        const simulateSizeBtn = document.getElementById('simulateSizeBtn');
+        const sizeHistoryPanel = document.getElementById('sizeHistoryPanel');
+        
+        // Initialize SQL.js
+        let sqlPromise = initSqlJs({
+            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        });
+        
+        // Show status message
+        function showStatus(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status-message ' + type;
+            statusMessage.style.display = 'block';
+        }
+        
+        // Clear status message
+        function clearStatus() {
+            statusMessage.style.display = 'none';
+        }
+        
+        // Handle file upload
+        dbFileInput.addEventListener('change', async function(e) {
+            clearStatus();
+            
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            try {
+                loading.style.display = 'flex';
+                
+                // Display file info
+                fileInfo.textContent = `File: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                
+                // Read file as array buffer
+                const arrayBuffer = await file.arrayBuffer();
+                const uintArray = new Uint8Array(arrayBuffer);
+                
+                // Initialize database
+                const SQL = await sqlPromise;
+                db = new SQL.Database(uintArray);
+                
+                // Record initial size
+                addSizeEntry(file.size);
+                
+                // Get list of tables
+                const tables = db.exec(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                );
+                
+                // Clear table list
+                tableList.innerHTML = '';
+                
+                if (tables.length > 0 && tables[0].values.length > 0) {
+                    // Populate table list
+                    tables[0].values.forEach((tableRow) => {
+                        const tableName = tableRow[0];
+                        const li = document.createElement('li');
+                        li.textContent = tableName;
+                        li.addEventListener('click', () => {
+                            loadTableData(tableName);
+                            
+                            // Update active state
+                            document.querySelectorAll('#tableList li').forEach(el => {
+                                el.classList.remove('active');
+                            });
+                            li.classList.add('active');
+                        });
+                        tableList.appendChild(li);
+                    });
+                    
+                    // Load the first table by default
+                    if (tables[0].values.length > 0) {
+                        loadTableData(tables[0].values[0][0]);
+                        tableList.firstChild.classList.add('active');
+                    }
+                    
+                    dbContent.style.display = 'block';
+                } else {
+                    showStatus('No tables found in the database.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showStatus(`Error reading database: ${err.message}`, 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+        
+        // Load data for a specific table
+        function loadTableData(tableName) {
+            if (!db) return;
+            
+            currentTable = tableName;
+            currentTableName.textContent = `Table: ${tableName}`;
+            exportCsvBtn.disabled = false;
+            
+            try {
+                // Get schema
+                const schemaResult = db.exec(`PRAGMA table_info(${tableName})`);
+                
+                if (schemaResult.length > 0) {
+                    // Display schema
+                    const columns = schemaResult[0].values.map(col => ({
+                        cid: col[0],
+                        name: col[1],
+                        type: col[2],
+                        notnull: col[3],
+                        dflt_value: col[4],
+                        pk: col[5]
+                    }));
+                    
+                    displaySchema(columns);
+                    
+                    // Get data (limit to 100 rows)
+                    const dataResult = db.exec(`SELECT * FROM ${tableName} LIMIT 100`);
+                    
+                    if (dataResult.length > 0) {
+                        const columnNames = dataResult[0].columns;
+                        const rows = dataResult[0].values;
+                        
+                        displayTableData(columnNames, rows);
+                    } else {
+                        tableData.innerHTML = '<p>No data in this table.</p>';
+                    }
+                } else {
+                    tableSchema.innerHTML = '<p>No schema information available.</p>';
+                    tableData.innerHTML = '<p>No data available.</p>';
+                }
+            } catch (err) {
+                console.error(err);
+                showStatus(`Error loading table ${tableName}: ${err.message}`, 'error');
+            }
+        }
+        
+        // Display schema information
+        function displaySchema(columns) {
+            let html = `
+                <div class="schema-grid">
+                    <div class="schema-header">Name</div>
+                    <div class="schema-header">Type</div>
+                    <div class="schema-header">Not Null</div>
+                    <div class="schema-header">Default</div>
+                    <div class="schema-header">Primary Key</div>
+            `;
+            
+            columns.forEach(col => {
+                html += `
+                    <div class="schema-cell">${col.name}</div>
+                    <div class="schema-cell">${col.type}</div>
+                    <div class="schema-cell">${col.notnull ? 'Yes' : 'No'}</div>
+                    <div class="schema-cell">${col.dflt_value !== null ? col.dflt_value : '-'}</div>
+                    <div class="schema-cell">${col.pk ? 'Yes' : 'No'}</div>
+                `;
+            });
+            
+            html += '</div>';
+            tableSchema.innerHTML = html;
+        }
+        
+        // Display table data
+        function displayTableData(columns, rows) {
+            if (rows.length === 0) {
+                tableData.innerHTML = '<p>No data in this table.</p>';
+                return;
+            }
+            
+            let html = '<table>';
+            
+            // Table header
+            html += '<thead><tr>';
+            columns.forEach(column => {
+                html += `<th>${column}</th>`;
+            });
+            html += '</tr></thead>';
+            
+            // Table body
+            html += '<tbody>';
+            rows.forEach(row => {
+                html += '<tr>';
+                row.forEach(cell => {
+                    html += `<td>${cell !== null ? String(cell) : 'NULL'}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            
+            tableData.innerHTML = html;
+        }
+        
+        // Export current table to CSV
+        exportCsvBtn.addEventListener('click', function() {
+            if (!currentTable || !db) return;
+            
+            try {
+                const result = db.exec(`SELECT * FROM ${currentTable}`);
+                if (result.length === 0) return;
+                
+                const columns = result[0].columns;
+                const rows = result[0].values;
+                
+                // Create CSV content
+                let csvContent = columns.join(',') + '\n';
+                
+                rows.forEach(row => {
+                    let csvRow = row.map(cell => {
+                        // Handle null values and escape commas and quotes
+                        if (cell === null) return '';
+                        let str = String(cell);
+                        if (str.includes(',') || str.includes('"')) {
+                            return `"${str.replace(/"/g, '""')}"`;
+                        }
+                        return str;
+                    }).join(',');
+                    
+                    csvContent += csvRow + '\n';
+                });
+                
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `${currentTable}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showStatus('CSV exported successfully!', 'success');
+            } catch (err) {
+                console.error(err);
+                showStatus(`Error exporting CSV: ${err.message}`, 'error');
+            }
+        });
+        
+        // Add a size entry for tracking
+        function addSizeEntry(size) {
+            const timestamp = new Date().toLocaleTimeString();
+            sizeHistory.push({
+                timestamp: timestamp,
+                size: size / 1024 // size in KB
+            });
+            
+            updateSizeChart();
+        }
+        
+        // Simulate size change
+        simulateSizeBtn.addEventListener('click', function() {
+            if (!dbFileInput.files[0]) return;
+            
+            // Random factor between 0.9 and 1.1
+            const randomFactor = 0.9 + Math.random() * 0.2;
+            const currentSize = dbFileInput.files[0].size;
+            const newSize = Math.round(currentSize * randomFactor);
+            
+            addSizeEntry(newSize);
+            showStatus('Size change simulated', 'info');
+        });
+        
+        // Update size history chart
+        function updateSizeChart() {
+            if (sizeHistory.length < 2) return;
+            
+            sizeHistoryPanel.style.display = 'block';
+            
+            const ctx = document.getElementById('sizeChart').getContext('2d');
+            
+            if (sizeChart) {
+                // Update existing chart
+                sizeChart.data.labels = sizeHistory.map(entry => entry.timestamp);
+                sizeChart.data.datasets[0].data = sizeHistory.map(entry => entry.size);
+                sizeChart.update();
+            } else {
+                // Create new chart
+                sizeChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: sizeHistory.map(entry => entry.timestamp),
+                        datasets: [{
+                            label: 'Database Size (KB)',
+                            data: sizeHistory.map(entry => entry.size),
+                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            pointRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                title: {
+                                    display: true,
+                                    text: 'Size (KB)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
