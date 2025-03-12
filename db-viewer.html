@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SQLite Database Viewer</title>
+    <title>SQLite Database Viewer v1.1.1</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
@@ -93,6 +93,9 @@
             padding: 8px 12px;
             border-bottom: 1px solid #eee;
             cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
         .table-list li:hover {
@@ -102,6 +105,19 @@
         .table-list li.active {
             background-color: #1976d2;
             color: white;
+        }
+        
+        .table-size {
+            font-size: 0.85em;
+            color: #666;
+            background-color: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .table-list li.active .table-size {
+            color: #fff;
+            background-color: rgba(255, 255, 255, 0.2);
         }
         
         .panel {
@@ -223,14 +239,58 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* New styles for table size panel */
+        .size-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .size-badge {
+            font-size: 0.9em;
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-left: 10px;
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .table-sizes-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .table-sizes-list li {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .table-sizes-list li:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>SQLite Database Viewer</h1>
+        <h1>SQLite Database Viewer <span style="font-size: 0.6em; font-weight: normal; background-color: #e3f2fd; color: #1565c0; padding: 4px 8px; border-radius: 4px; margin-left: 10px;">v1.1.1</span></h1>
         
         <div class="file-input-container">
             <h2>Upload SQLite Database</h2>
+            <div id="versionInfo" style="margin-bottom: 15px; font-size: 0.9em; color: #666;">
+                <p><strong>Version 1.1.1</strong> - Fixed table size calculation accuracy</p>
+                <details>
+                    <summary>Version History</summary>
+                    <ul style="margin-top: 5px; padding-left: 20px;">
+                        <li><strong>v1.1.1</strong> - Fixed table size calculation to provide accurate proportional sizes</li>
+                        <li><strong>v1.1.0</strong> - Added table size estimation, size badges, and table sizes panel</li>
+                        <li><strong>v1.0.0</strong> - Initial release with basic SQLite viewing capabilities</li>
+                    </ul>
+                </details>
+            </div>
             <input type="file" id="dbFileInput" accept=".db,.sqlite,.sqlite3,.db3">
             <p>Select a .db file to analyze its structure and content</p>
             <div id="fileInfo"></div>
@@ -251,10 +311,23 @@
                 </div>
                 
                 <div class="main-content">
+                    <!-- New panel for table sizes -->
+                    <div class="panel" id="tableSizesPanel">
+                        <div class="panel-header">
+                            <h3>Table Sizes</h3>
+                            <button id="refreshSizesBtn" class="button secondary">Refresh Sizes</button>
+                        </div>
+                        <div class="panel-body">
+                            <p>Proportional sizes of tables in the database (scaled to match actual file size):</p>
+                            <ul id="tableSizesList" class="table-sizes-list"></ul>
+                        </div>
+                    </div>
+                    
                     <div id="tableInfo">
                         <div class="panel-header">
                             <h2 id="currentTableName">Select a table</h2>
-                            <div>
+                            <div class="size-info">
+                                <span id="currentTableSize" class="size-badge">Size: - KB</span>
                                 <button id="exportCsvBtn" class="button success" disabled>Export to CSV</button>
                                 <button id="simulateSizeBtn" class="button secondary">Simulate Size Change</button>
                             </div>
@@ -306,6 +379,7 @@
         let currentTable = null;
         let sizeHistory = [];
         let sizeChart = null;
+        let tableStats = {};
         
         // DOM Elements
         const dbFileInput = document.getElementById('dbFileInput');
@@ -315,11 +389,14 @@
         const dbContent = document.getElementById('dbContent');
         const tableList = document.getElementById('tableList');
         const currentTableName = document.getElementById('currentTableName');
+        const currentTableSize = document.getElementById('currentTableSize');
         const tableSchema = document.getElementById('tableSchema');
         const tableData = document.getElementById('tableData');
         const exportCsvBtn = document.getElementById('exportCsvBtn');
         const simulateSizeBtn = document.getElementById('simulateSizeBtn');
         const sizeHistoryPanel = document.getElementById('sizeHistoryPanel');
+        const refreshSizesBtn = document.getElementById('refreshSizesBtn');
+        const tableSizesList = document.getElementById('tableSizesList');
         
         // Initialize SQL.js
         let sqlPromise = initSqlJs({
@@ -371,11 +448,26 @@
                 tableList.innerHTML = '';
                 
                 if (tables.length > 0 && tables[0].values.length > 0) {
+                    // Calculate table sizes
+                    await calculateAllTableSizes();
+                    
                     // Populate table list
                     tables[0].values.forEach((tableRow) => {
                         const tableName = tableRow[0];
                         const li = document.createElement('li');
-                        li.textContent = tableName;
+                        
+                        // Create main table name text
+                        const tableNameSpan = document.createElement('span');
+                        tableNameSpan.textContent = tableName;
+                        li.appendChild(tableNameSpan);
+                        
+                        // Create size badge
+                        const sizeSpan = document.createElement('span');
+                        sizeSpan.className = 'table-size';
+                        const tableSize = tableStats[tableName] ? tableStats[tableName].sizeKB.toFixed(2) : '?';
+                        sizeSpan.textContent = `${tableSize} KB`;
+                        li.appendChild(sizeSpan);
+                        
                         li.addEventListener('click', () => {
                             loadTableData(tableName);
                             
@@ -387,6 +479,9 @@
                         });
                         tableList.appendChild(li);
                     });
+                    
+                    // Update the table sizes panel
+                    updateTableSizesPanel();
                     
                     // Load the first table by default
                     if (tables[0].values.length > 0) {
@@ -406,12 +501,268 @@
             }
         });
         
+        // Function to estimate table sizes
+        async function calculateAllTableSizes() {
+            if (!db) return;
+            
+            try {
+                // Get the total database file size
+                const dbFileSize = dbFileInput.files[0].size;
+                const dbFileSizeKB = dbFileSize / 1024;
+                
+                // Reserve ~10% for SQLite overhead, indexes, etc.
+                const availableSizeKB = dbFileSizeKB * 0.9;
+                
+                // Get list of tables
+                const tables = db.exec(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                );
+                
+                if (tables.length > 0 && tables[0].values.length > 0) {
+                    // First pass: calculate raw size estimates and row counts
+                    let totalRawSize = 0;
+                    const rawSizes = {};
+                    
+                    for (const tableRow of tables[0].values) {
+                        const tableName = tableRow[0];
+                        const rawSize = await calculateRawTableSize(tableName);
+                        rawSizes[tableName] = rawSize;
+                        totalRawSize += rawSize.rawSize;
+                    }
+                    
+                    // Second pass: scale sizes proportionally to match total file size
+                    const scalingFactor = totalRawSize > 0 ? (availableSizeKB / totalRawSize) : 1;
+                    
+                    for (const tableName in rawSizes) {
+                        const rawData = rawSizes[tableName];
+                        const scaledSize = rawData.rawSize * scalingFactor;
+                        
+                        tableStats[tableName] = {
+                            rowCount: rawData.rowCount,
+                            avgRowSize: rawData.avgRowSize,
+                            size: scaledSize * 1024, // Convert back to bytes
+                            sizeKB: scaledSize,
+                            // Store the proportion for future reference
+                            proportion: totalRawSize > 0 ? (rawData.rawSize / totalRawSize) : 0
+                        };
+                    }
+                }
+            } catch (err) {
+                console.error("Error calculating table sizes:", err);
+                showStatus(`Error calculating table sizes: ${err.message}`, 'error');
+            }
+        }
+        
+        // Calculate raw size estimate for a specific table
+        async function calculateRawTableSize(tableName) {
+            if (!db) return { rowCount: 0, avgRowSize: 0, rawSize: 0 };
+            
+            try {
+                // Get schema
+                const schemaResult = db.exec(`PRAGMA table_info(${tableName})`);
+                
+                if (schemaResult.length === 0) {
+                    return { rowCount: 0, avgRowSize: 0, rawSize: 0 };
+                }
+                
+                const columns = schemaResult[0].values.map(col => ({
+                    name: col[1],
+                    type: col[2].toUpperCase()
+                }));
+                
+                // Get row count
+                const countResult = db.exec(`SELECT COUNT(*) FROM ${tableName}`);
+                const rowCount = countResult[0].values[0][0];
+                
+                if (rowCount === 0) {
+                    return { rowCount: 0, avgRowSize: 0, rawSize: 0 };
+                }
+                
+                // Sample some rows to estimate average row size
+                const sampleSize = Math.min(50, rowCount);
+                let sampleQuery = `SELECT * FROM ${tableName} LIMIT ${sampleSize}`;
+                
+                const sampleResult = db.exec(sampleQuery);
+                
+                let totalSize = 0;
+                let avgRowSize = 0;
+                
+                if (sampleResult.length > 0 && sampleResult[0].values.length > 0) {
+                    // Base overhead per row in SQLite
+                    const rowOverhead = 2;
+                    
+                    // Calculate avg size based on column types and actual data
+                    for (const row of sampleResult[0].values) {
+                        let rowSize = rowOverhead; // Start with overhead
+                        
+                        for (let i = 0; i < row.length; i++) {
+                            const value = row[i];
+                            const columnType = columns[i].type;
+                            
+                            if (value === null) {
+                                // SQLite stores NULLs efficiently
+                                rowSize += 0.5;
+                            } else if (typeof value === 'number') {
+                                if (columnType.includes('INT')) {
+                                    // Integers in SQLite use variable storage (1-9 bytes)
+                                    const numBytes = value === 0 ? 1 :
+                                                    Math.abs(value) < 128 ? 1 :
+                                                    Math.abs(value) < 32768 ? 2 :
+                                                    Math.abs(value) < 8388608 ? 3 :
+                                                    Math.abs(value) < 2147483648 ? 4 : 8;
+                                    rowSize += numBytes;
+                                } else {
+                                    // REAL type uses 8 bytes
+                                    rowSize += 8;
+                                }
+                            } else if (typeof value === 'string') {
+                                // String storage in SQLite is efficient
+                                // Length + actual bytes (accounting for potential UTF-8)
+                                const strLength = new TextEncoder().encode(value).length;
+                                rowSize += strLength + (strLength < 128 ? 1 : 2);
+                            } else if (value instanceof Uint8Array) {
+                                // BLOB data
+                                rowSize += value.length + (value.length < 128 ? 1 : 2);
+                            } else {
+                                // Other types
+                                rowSize += 1;
+                            }
+                        }
+                        
+                        totalSize += rowSize;
+                    }
+                    
+                    // Calculate average row size from samples
+                    avgRowSize = totalSize / sampleResult[0].values.length;
+                    
+                    // Raw size estimate in KB
+                    const rawSizeKB = (avgRowSize * rowCount) / 1024;
+                    
+                    return {
+                        rowCount: rowCount,
+                        avgRowSize: avgRowSize,
+                        rawSize: rawSizeKB
+                    };
+                }
+                
+                return { rowCount: 0, avgRowSize: 0, rawSize: 0 };
+                
+            } catch (err) {
+                console.error(`Error calculating raw size for table ${tableName}:`, err);
+                return { rowCount: 0, avgRowSize: 0, rawSize: 0 };
+            }
+        }
+        
+        // Update the table sizes panel
+        function updateTableSizesPanel() {
+            if (!tableSizesList) return;
+            
+            // Clear the current list
+            tableSizesList.innerHTML = '';
+            
+            // Get all table names and sort by size (descending)
+            const tableNames = Object.keys(tableStats).sort((a, b) => {
+                return tableStats[b].size - tableStats[a].size;
+            });
+            
+            // Create a list item for each table
+            tableNames.forEach(tableName => {
+                const stats = tableStats[tableName];
+                const li = document.createElement('li');
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = tableName;
+                li.appendChild(nameSpan);
+                
+                const statsSpan = document.createElement('span');
+                statsSpan.innerHTML = `${stats.sizeKB.toFixed(2)} KB <small>(${stats.rowCount.toLocaleString()} rows)</small>`;
+                li.appendChild(statsSpan);
+                
+                tableSizesList.appendChild(li);
+            });
+            
+            // Add total size at the bottom
+            const totalSize = Object.values(tableStats).reduce((sum, stat) => sum + stat.size, 0);
+            const actualFileSize = dbFileInput.files[0].size;
+            
+            const totalLi = document.createElement('li');
+            totalLi.style.fontWeight = 'bold';
+            totalLi.style.borderTop = '2px solid #ddd';
+            totalLi.style.marginTop = '8px';
+            totalLi.style.paddingTop = '8px';
+            
+            const totalNameSpan = document.createElement('span');
+            totalNameSpan.textContent = 'Tables Total';
+            totalLi.appendChild(totalNameSpan);
+            
+            const totalSizeSpan = document.createElement('span');
+            totalSizeSpan.textContent = `${(totalSize / 1024).toFixed(2)} KB`;
+            totalLi.appendChild(totalSizeSpan);
+            
+            tableSizesList.appendChild(totalLi);
+            
+            // Add actual file size for reference
+            const fileSizeLi = document.createElement('li');
+            fileSizeLi.style.fontWeight = 'bold';
+            
+            const fileNameSpan = document.createElement('span');
+            fileNameSpan.textContent = 'Actual DB File Size';
+            fileSizeLi.appendChild(fileNameSpan);
+            
+            const fileSizeSpan = document.createElement('span');
+            fileSizeSpan.textContent = `${(actualFileSize / 1024).toFixed(2)} KB`;
+            fileSizeLi.appendChild(fileSizeSpan);
+            
+            tableSizesList.appendChild(fileSizeLi);
+        }
+        
+        // Add event listener for refresh button
+        refreshSizesBtn.addEventListener('click', async function() {
+            try {
+                loading.style.display = 'flex';
+                showStatus('Refreshing table sizes...', 'info');
+                
+                await calculateAllTableSizes();
+                updateTableSizesPanel();
+                
+                // Update size badges in the table list
+                document.querySelectorAll('#tableList li').forEach(li => {
+                    const tableName = li.querySelector('span:first-child').textContent;
+                    const sizeSpan = li.querySelector('.table-size');
+                    
+                    if (tableStats[tableName]) {
+                        sizeSpan.textContent = `${tableStats[tableName].sizeKB.toFixed(2)} KB`;
+                    }
+                });
+                
+                // Update current table size if one is selected
+                if (currentTable && tableStats[currentTable]) {
+                    currentTableSize.textContent = `Size: ${tableStats[currentTable].sizeKB.toFixed(2)} KB`;
+                }
+                
+                showStatus('Table sizes refreshed!', 'success');
+            } catch (err) {
+                console.error(err);
+                showStatus(`Error refreshing sizes: ${err.message}`, 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+        
         // Load data for a specific table
         function loadTableData(tableName) {
             if (!db) return;
             
             currentTable = tableName;
             currentTableName.textContent = `Table: ${tableName}`;
+            
+            // Update size badge
+            if (tableStats[tableName]) {
+                currentTableSize.textContent = `Size: ${tableStats[tableName].sizeKB.toFixed(2)} KB`;
+            } else {
+                currentTableSize.textContent = `Size: ? KB`;
+            }
+            
             exportCsvBtn.disabled = false;
             
             try {
