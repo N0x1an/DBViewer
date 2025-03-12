@@ -2,7 +2,7 @@
 
 A lightweight, browser-based tool for viewing and analyzing SQLite database files. This application allows you to upload a SQLite database file (.db, .sqlite, .sqlite3) and examine its structure and contents without requiring any server-side components.
 
-![SQLite Database Viewer Screenshot](image1.png)
+![SQLite Database Viewer Screenshot](images/image1.png)
 
 ## Features
 
@@ -69,4 +69,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Screenshots
 
 ### Main Interface
-![Main Interface](DBViewer_full_interface.gif)
+![Main Interface](images/DBViewer_full_interface.gif)
