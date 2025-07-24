@@ -12,6 +12,9 @@
             margin: 0;
             padding: 20px;
             background-color: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
         
         .container {
@@ -21,18 +24,16 @@
             padding: 20px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             border-radius: 5px;
+            flex: 1;
         }
 
-        /* HearthLabs signature and footer */
+        /* HearthLabs signature and footer - now dynamic */
         .footer {
-            position: absolute;
-            bottom: 0;
-            right: 0;
-            padding: 10px 20px;
+            margin-top: 40px;
+            padding: 20px;
             font-size: 0.85em;
             color: #666;
             border-top: 1px solid #eee;
-            width: 100%;
             text-align: right;
             background-color: #f9f9f9;
             border-radius: 0 0 5px 5px;
@@ -393,13 +394,14 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="footer">
-        <div class="hearthlabs-signature">
-            <span class="hearthlabs-logo"> by HearthLabs</span>
+        <!-- Footer is now inside container and will flow with content -->
+        <div class="footer">
+            <div class="hearthlabs-signature">
+                <span class="hearthlabs-logo"> by HearthLabs</span>
+            </div>
+            <div>© 2025 HearthLabs - SQLite Database Viewer v1.1.1</div>
         </div>
-        <div>© 2025 HearthLabs - SQLite Database Viewer v1.1.1</div>
     </div>
 
     
